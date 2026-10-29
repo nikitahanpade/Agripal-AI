@@ -1,27 +1,66 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sprout, TrendingUp, AlertTriangle, Gift, Cloud, ArrowLeft, RefreshCw, Star, DollarSign, Calendar, Target } from 'lucide-react';
+import { apiUrl } from '../api';
+import {
+  Sprout,
+  AlertTriangle,
+  Cloud,
+  ArrowLeft,
+  RefreshCw,
+  MapPin,
+  Droplets,
+  Leaf,
+  Database,
+  Info,
+  FlaskConical,
+} from 'lucide-react';
 import { useUser } from '../context/UserContext';
 
-interface AIRecommendation {
-  recommendedCrop: string;
-  confidence: number;
-  expectedProfit: string;
-  profitPerAcre: string;
-  season: string;
-  weather: string;
-  alerts: string[];
-  subsidies: string[];
-  marketTrend: string;
-  pestRisk: string;
-  tips: string[];
+interface CropRecommendationItem {
+  regionType?: string;
+  typicalSoilGroups?: string;
+  seasonalCandidateCrops?: string;
+  districtMajorCrops?: string;
+  waterGuidance?: string;
+  recommendationStatus?: string;
+}
+
+interface CropRecommendationResponse {
+  success: boolean;
+  source?: string;
+  state?: string;
+  district?: string;
+  season?: string;
+  recommendations?: CropRecommendationItem[];
+  advisory?: string;
+  message?: string;
+  error?: string;
 }
 
 const Recommendation: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [recommendation, setRecommendation] = useState<AIRecommendation | null>(null);
   const { user, formData } = useUser();
   const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [result, setResult] =
+    useState<CropRecommendationResponse | null>(null);
+
+  const data = formData as
+    | (NonNullable<typeof formData> & {
+        state?: string;
+        district?: string;
+        season?: string;
+      })
+    | null;
+
+  const state =
+    data?.state || data?.location?.split(' - ')[0] || '';
+
+  const district =
+    data?.district || data?.location?.split(' - ')[1] || '';
+
+  const season = data?.season || '';
 
   useEffect(() => {
     if (!user || !formData) {
@@ -29,230 +68,359 @@ const Recommendation: React.FC = () => {
       return;
     }
 
-    // Simulate AI processing
-    const timer = setTimeout(() => {
-      const mockRecommendation = generateMockRecommendation(formData);
-      setRecommendation(mockRecommendation);
+    if (!state || !district || !season) {
+      setError(
+        'State, district, or season is missing. Please return to the input form and select all required fields.'
+      );
       setLoading(false);
-    }, 3000);
+      return;
+    }
 
-    return () => clearTimeout(timer);
-  }, [user, formData, navigate]);
+    const controller = new AbortController();
 
-  const generateMockRecommendation = (data: any): AIRecommendation => {
-    // Mock AI logic based on input
-    const cropRecommendations: Record<string, any> = {
-      'Black Soil (Regur)': {
-        crop: 'Cotton',
-        profit: '₹45,000 - ₹65,000',
-        perAcre: '₹55,000',
-        tips: ['Use drip irrigation for water efficiency', 'Monitor for bollworm pests', 'Apply fertilizer in split doses']
-      },
-      'Red Soil': {
-        crop: 'Groundnut',
-        profit: '₹35,000 - ₹55,000',
-        perAcre: '₹45,000',
-        tips: ['Ensure proper drainage', 'Use calcium-rich fertilizers', 'Harvest at optimal maturity']
-      },
-      'Alluvial Soil': {
-        crop: 'Wheat',
-        profit: '₹25,000 - ₹40,000',
-        perAcre: '₹32,000',
-        tips: ['Timely sowing is crucial', 'Use certified seeds', 'Apply nitrogen in 2-3 splits']
+    const fetchRecommendations = async () => {
+      setLoading(true);
+      setError('');
+      setResult(null);
+
+      try {
+        const params = new URLSearchParams({
+          state,
+          district,
+          season,
+        });
+
+        const response = await fetch(
+          apiUrl(`/api/crop-recommendations?${params.toString()}`),
+          { signal: controller.signal }
+        );
+
+        const responseData: CropRecommendationResponse =
+          await response.json();
+
+        if (!response.ok || !responseData.success) {
+          throw new Error(
+            responseData.message ||
+              responseData.error ||
+              (state.toLowerCase() !== 'maharashtra'
+                ? 'The current crop reference dataset supports Maharashtra only.'
+                : 'Unable to load crop recommendations.')
+          );
+        }
+
+        setResult(responseData);
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Something went wrong while loading recommendations.'
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
-    const selected = cropRecommendations[data.soilType] || cropRecommendations['Black Soil (Regur)'];
+    fetchRecommendations();
 
-    return {
-      recommendedCrop: selected.crop,
-      confidence: Math.floor(Math.random() * 15) + 85,
-      expectedProfit: selected.profit,
-      profitPerAcre: selected.perAcre,
-      season: 'Kharif 2024',
-      weather: 'Moderate rainfall expected in next 7 days',
-      alerts: [
-        data.waterAvailability === 'Low' ? 'Water stress alert - Consider drought-resistant varieties' : 'Optimal water conditions',
-        'Pest alert: Monitor for aphids in current season'
-      ],
-      subsidies: [
-        'PM-KISAN Scheme - ₹6,000 per year',
-        'Seed Subsidy - 50% off certified seeds',
-        'Drip Irrigation Subsidy - 75% support available'
-      ],
-      marketTrend: 'Rising demand with 12% price increase expected',
-      pestRisk: 'Medium risk - Preventive measures recommended',
-      tips: selected.tips
-    };
-  };
+    return () => controller.abort();
+  }, [user, formData, navigate, state, district, season]);
 
-  if (!user || !formData) return null;
-
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 md:p-12 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto mb-6"></div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Analyzing Your Farm Data</h2>
-          <p className="text-gray-600 mb-4">Our AI is processing weather patterns, market trends, and soil conditions...</p>
-          <div className="bg-gray-100 rounded-full h-2 mb-4">
-            <div className="bg-green-600 h-2 rounded-full animate-pulse" style={{ width: '75%' }}></div>
-          </div>
-          <p className="text-sm text-gray-500">This may take a few moments</p>
-        </div>
-      </div>
-    );
+  if (!user || !formData) {
+    return null;
   }
 
-  if (!recommendation) return null;
+  const crop = result?.recommendations?.[0];
+
+  const cropNames = crop?.seasonalCandidateCrops
+    ? crop.seasonalCandidateCrops
+        .split(';')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-          AI Recommendations for {user.name}'s Farm
+        <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-full text-sm font-semibold mb-4">
+          <Sprout className="h-4 w-4" />
+          AgriPal AI Crop Advisor
+        </div>
+
+        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+          Crop Recommendations
         </h1>
+
         <p className="text-gray-600">
-          Based on your farm conditions in {formData.location}
+          Hello {user.name}, here is the regional crop reference for your
+          selected farm location.
         </p>
-      </div>
 
-      {/* Main Recommendation Card */}
-      <div className="bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-3xl p-8 md:p-12 mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center">
-            <Sprout className="h-12 w-12 mr-4" />
-            <div>
-              <h2 className="text-3xl font-bold">{recommendation.recommendedCrop}</h2>
-              <p className="text-green-100">Recommended Crop</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="flex items-center mb-2">
-              <Star className="h-5 w-5 mr-1" />
-              <span className="text-2xl font-bold">{recommendation.confidence}%</span>
-            </div>
-            <p className="text-green-100">Confidence</p>
-          </div>
-        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-4 text-sm text-gray-600">
+          <span className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-3 py-2">
+            <MapPin className="h-4 w-4 text-green-600" />
+            {district || 'District not selected'}, {state}
+          </span>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="bg-white/10 rounded-2xl p-6">
-            <DollarSign className="h-8 w-8 mb-3" />
-            <h3 className="font-semibold mb-2">Expected Profit</h3>
-            <p className="text-2xl font-bold">{recommendation.profitPerAcre}</p>
-            <p className="text-green-100 text-sm">per acre</p>
-          </div>
-
-          <div className="bg-white/10 rounded-2xl p-6">
-            <Calendar className="h-8 w-8 mb-3" />
-            <h3 className="font-semibold mb-2">Growing Season</h3>
-            <p className="text-xl font-bold">{recommendation.season}</p>
-            <p className="text-green-100 text-sm">Optimal timing</p>
-          </div>
-
-          <div className="bg-white/10 rounded-2xl p-6">
-            <Target className="h-8 w-8 mb-3" />
-            <h3 className="font-semibold mb-2">Market Outlook</h3>
-            <p className="text-lg font-semibold">{recommendation.marketTrend}</p>
-            <p className="text-green-100 text-sm">Price forecast</p>
-          </div>
+          <span className="bg-white border border-gray-200 rounded-full px-3 py-2">
+            Season: {season || 'Not selected'}
+          </span>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-8 mb-8">
-        {/* Weather & Alerts */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center mb-4">
-            <Cloud className="h-6 w-6 text-blue-600 mr-2" />
-            <h3 className="text-xl font-semibold text-gray-900">Weather & Alerts</h3>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="bg-blue-50 p-4 rounded-xl">
-              <p className="font-medium text-blue-900">Weather Forecast</p>
-              <p className="text-blue-700">{recommendation.weather}</p>
-            </div>
+      {loading && (
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 md:p-12 text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto mb-6" />
 
-            <div>
-              <p className="font-medium text-gray-900 mb-2">Active Alerts:</p>
-              {recommendation.alerts.map((alert, index) => (
-                <div key={index} className="flex items-start bg-orange-50 p-3 rounded-xl mb-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-600 mr-2 mt-0.5 flex-shrink-0" />
-                  <p className="text-orange-800 text-sm">{alert}</p>
-                </div>
-              ))}
-            </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">
+            Loading Crop Recommendations
+          </h2>
 
-            <div className="bg-red-50 p-4 rounded-xl">
-              <p className="font-medium text-red-900">Pest Risk Level</p>
-              <p className="text-red-700">{recommendation.pestRisk}</p>
-            </div>
-          </div>
+          <p className="text-gray-600">
+            Fetching regional crop data from the AgriPal backend...
+          </p>
         </div>
+      )}
 
-        {/* Subsidies & Support */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center mb-4">
-            <Gift className="h-6 w-6 text-purple-600 mr-2" />
-            <h3 className="text-xl font-semibold text-gray-900">Available Subsidies</h3>
-          </div>
-          
-          <div className="space-y-3">
-            {recommendation.subsidies.map((subsidy, index) => (
-              <div key={index} className="bg-purple-50 p-4 rounded-xl">
-                <p className="font-medium text-purple-900">{subsidy.split(' - ')[0]}</p>
-                <p className="text-purple-700 text-sm">{subsidy.split(' - ')[1]}</p>
+      {!loading && error && (
+        <div className="bg-white rounded-3xl shadow-sm border border-red-100 p-8 text-center">
+          <AlertTriangle className="h-12 w-12 text-orange-500 mx-auto mb-4" />
+
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">
+            Unable to Load Recommendations
+          </h2>
+
+          <p className="text-gray-600 mb-6">{error}</p>
+
+          <p className="text-sm text-gray-500 mb-6">
+            Make sure the backend server is running on port 5000 and that
+            your selected district and season are available in the dataset.
+          </p>
+
+          <button
+            onClick={() => navigate('/input')}
+            className="inline-flex items-center justify-center px-6 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition"
+          >
+            <ArrowLeft className="mr-2 h-5 w-5" />
+            Modify Input
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && result && (
+        <>
+          <div className="bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-3xl p-8 md:p-10 mb-8">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="bg-white/15 rounded-2xl p-4">
+                <Sprout className="h-10 w-10" />
               </div>
-            ))}
-          </div>
-          
-          <div className="mt-4 p-4 bg-green-50 rounded-xl">
-            <p className="font-medium text-green-900">Total Potential Savings</p>
-            <p className="text-green-700 text-lg font-bold">₹8,000 - ₹15,000</p>
-          </div>
-        </div>
-      </div>
 
-      {/* Farming Tips */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
-        <div className="flex items-center mb-4">
-          <TrendingUp className="h-6 w-6 text-green-600 mr-2" />
-          <h3 className="text-xl font-semibold text-gray-900">Smart Farming Tips</h3>
-        </div>
-        
-        <div className="grid md:grid-cols-3 gap-4">
-          {recommendation.tips.map((tip, index) => (
-            <div key={index} className="bg-green-50 p-4 rounded-xl">
-              <p className="text-green-800 font-medium">Tip #{index + 1}</p>
-              <p className="text-green-700 text-sm mt-1">{tip}</p>
+              <div>
+                <p className="text-green-100 mb-1">
+                  Regional Candidate Crops
+                </p>
+
+                <h2 className="text-2xl md:text-3xl font-bold">
+                  {district} · {season}
+                </h2>
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-4">
+            {cropNames.length > 0 ? (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {cropNames.map((cropName, index) => (
+                  <div
+                    key={`${cropName}-${index}`}
+                    className="bg-white/10 border border-white/20 rounded-2xl p-5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Leaf className="h-6 w-6 text-green-100 shrink-0" />
+                      <h3 className="text-lg font-semibold">{cropName}</h3>
+                    </div>
+                    <p className="text-green-100 text-sm mt-3">
+                      Regional candidate for further suitability checking
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-green-50">
+                No crop candidates were listed for this selection.
+              </p>
+            )}
+
+            {crop?.regionType && (
+              <p className="text-green-100 mt-6">
+                Region: {crop.regionType}
+              </p>
+            )}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <FlaskConical className="h-6 w-6 text-amber-600" />
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Soil Reference
+                </h3>
+              </div>
+
+              <p className="text-gray-600 mb-3">
+                <span className="font-semibold text-gray-900">
+                  Selected soil:
+                </span>{' '}
+                {data?.soilType || 'Not provided'}
+              </p>
+
+              <p className="text-gray-600">
+                <span className="font-semibold text-gray-900">
+                  Typical regional soil groups:
+                </span>{' '}
+                {crop?.typicalSoilGroups ||
+                  'No soil reference is available for this record.'}
+              </p>
+
+              <p className="text-sm text-gray-500 mt-4">
+                Regional soil information does not replace a soil test.
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Droplets className="h-6 w-6 text-blue-600" />
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Water Guidance
+                </h3>
+              </div>
+
+              <p className="text-gray-600 mb-4">
+                {crop?.waterGuidance ||
+                  'Check local rainfall, irrigation availability, drainage, and field moisture before planting.'}
+              </p>
+
+              <div className="bg-blue-50 rounded-xl p-4">
+                <p className="font-semibold text-blue-900">
+                  Your water availability
+                </p>
+                <p className="text-blue-800 mt-1">
+                  {data?.waterAvailability || 'Not provided'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Database className="h-6 w-6 text-purple-600" />
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Dataset Information
+                </h3>
+              </div>
+
+              <p className="text-gray-600 mb-3">
+                <span className="font-semibold text-gray-900">Source:</span>{' '}
+                {result.source || 'AgriPal Crop Reference Dataset'}
+              </p>
+
+              {crop?.districtMajorCrops && (
+                <p className="text-gray-600 mb-3">
+                  <span className="font-semibold text-gray-900">
+                    Regional major crops:
+                  </span>{' '}
+                  {crop.districtMajorCrops}
+                </p>
+              )}
+
+              <p className="text-gray-600">
+                <span className="font-semibold text-gray-900">
+                  Record status:
+                </span>{' '}
+                {crop?.recommendationStatus ||
+                  'Regional reference; verify locally before planting.'}
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Cloud className="h-6 w-6 text-sky-600" />
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Farm Details
+                </h3>
+              </div>
+
+              <div className="space-y-3 text-gray-600">
+                <p>
+                  <span className="font-semibold text-gray-900">Budget:</span>{' '}
+                  {data?.budget || 'Not provided'}
+                </p>
+
+                <p>
+                  <span className="font-semibold text-gray-900">
+                    Temperature:
+                  </span>{' '}
+                  {data?.temperature !== undefined
+                    ? `${data.temperature} °C`
+                    : 'Not provided'}
+                </p>
+
+                <p>
+                  <span className="font-semibold text-gray-900">Soil pH:</span>{' '}
+                  {data?.ph !== undefined ? data.ph : 'Not provided'}
+                </p>
+
+                <p>
+                  <span className="font-semibold text-gray-900">Humidity:</span>{' '}
+                  {data?.humidity !== undefined
+                    ? `${data.humidity}%`
+                    : 'Not provided'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-8">
+            <div className="flex items-start gap-3">
+              <Info className="h-6 w-6 text-amber-700 shrink-0 mt-0.5" />
+
+              <div>
+                <h3 className="font-semibold text-amber-900 mb-2">
+                  Important Agricultural Advisory
+                </h3>
+
+                <p className="text-amber-900">
+                  {result.advisory ||
+                    'These are regional candidate crops, not guaranteed recommendations. Confirm soil suitability with a soil test and current local agricultural guidance before planting.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-4 mt-8">
         <button
           onClick={() => navigate('/input')}
-          className="flex items-center justify-center px-6 py-4 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 focus:ring-4 focus:ring-gray-200 transition-all duration-200"
+          className="flex items-center justify-center px-6 py-4 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition"
         >
           <ArrowLeft className="mr-2 h-5 w-5" />
           Modify Input
         </button>
-        
+
         <button
           onClick={() => window.location.reload()}
-          className="flex items-center justify-center px-6 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 transition-all duration-200"
+          className="flex items-center justify-center px-6 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition"
         >
           <RefreshCw className="mr-2 h-5 w-5" />
-          Get New Recommendation
+          Refresh Recommendations
         </button>
-        
+
         <button
           onClick={() => navigate('/')}
-          className="flex-1 flex items-center justify-center px-6 py-4 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 transition-all duration-200"
+          className="flex-1 flex items-center justify-center px-6 py-4 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition"
         >
           Start New Analysis
         </button>

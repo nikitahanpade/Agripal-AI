@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
+import { apiUrl } from '../api';
 
 const Dataset = () => {
   const [entries, setEntries] = useState([]);
 
   useEffect(() => {
-  fetch("http://localhost:5000/form-submissions")
+  fetch(apiUrl('/form-submissions'))
     .then((res) => res.json())
     .then((data) => {
       console.log("Fetched data:", data); // 

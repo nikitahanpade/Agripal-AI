@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Phone, ArrowRight } from 'lucide-react';
 import { useUser } from '../context/UserContext';
+import { apiUrl } from '../api';
 
 const Register: React.FC = () => {
   const [name, setName] = useState('');
@@ -52,8 +53,7 @@ const Register: React.FC = () => {
       };
 
       try {
-        const response = await fetch('http://localhost:5000/register', {
-          method: 'POST',
+       const response = await fetch(apiUrl('/register'), {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });

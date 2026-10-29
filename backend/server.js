@@ -6,7 +6,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-
+const cropRecommendationRouter = require("./routes/cropRecommendation");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -16,6 +16,7 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
+app.use("/api", cropRecommendationRouter);
 app.use(express.json());
 
 // ✅ Connect to MongoDB
