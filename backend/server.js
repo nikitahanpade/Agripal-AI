@@ -16,8 +16,16 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
+
+// JSON parser must run before API routes.
+// Image upload साठी request size limit वाढवली आहे.
+app.use(express.json({ limit: '10mb' }));
+
 app.use("/api", cropRecommendationRouter);
-app.use(express.json());
+
+// Crop Disease Checker API
+const cropDiseaseRouter = require("./routes/cropDisease");
+app.use("/api", cropDiseaseRouter);
 
 // ✅ Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, {
