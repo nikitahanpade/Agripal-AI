@@ -205,3 +205,5 @@ app.get("/form-submissions", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
+console.log('Gemini API Key Configured:', Boolean(process.env.GEMINI_API_KEY));
